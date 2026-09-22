@@ -17,7 +17,7 @@ export default function TxForm({ cats, tx }: { cats: Cat[]; tx: Tx }) {
   const initialCat = tx ? String(tx.categoryId) : String(opts[0]?.id ?? "");
 
   return (
-    <form action={action} className="space-y-5">
+    <form key={tx?.id ?? "new"} action={action} className="space-y-5">
       {tx && <input type="hidden" name="id" value={tx.id} />}
 
       {/* Segmented: Pengeluaran / Pemasukan */}

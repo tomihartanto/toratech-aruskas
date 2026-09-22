@@ -14,15 +14,16 @@ const db=new PrismaClient({adapter:new PrismaPg({connectionString:process.env.DA
 const prefix=`e2e-${randomBytes(8).toString('hex')}`;
 const password=randomBytes(24).toString('base64url');
 const ids=[],emails=[],errors=[];
-let browser;
+let stage='start', browser;
 try {
  browser=await chromium.launch({channel:'msedge',headless:true});
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  const page=await context.newPage();
  page.on('pageerror',e=>errors.push(e.message));
- page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
+ page.on('console',m=>{if(m.type()==='error') errors.push(`${stage}: ${m.text()} @ ${m.location().url}`);});
  let response=await page.goto(`${base}/setup`); assert.ok([200,307].includes(response.status()));
- if(page.url().endsWith('/setup')) {assert.match(await page.textContent('body'),/tomihartanto/); assert.equal(await page.locator('input[type=password]').count(),2);}
+ if(page.url().endsWith('/setup')) {assert.match(await page.textContent('body'),/Siapkan ArusKas/); assert.equal(await page.locator('input[type=password]').count(),2);}
+ stage='register';
  const email=`${prefix}`; emails.push(email);
  const token=await issueInvite(db,email);
  await page.goto(`${base}/register?token=${token}`);
@@ -32,6 +33,7 @@ try {
  await page.waitForURL(base+'/');
  const user=await db.user.findUniqueOrThrow({where:{username:email}}); ids.push(user.id); assert.equal(user.role,'user');
  assert.equal(await db.session.count({where:{userId:user.id}}),1);
+ stage='transaction create';
  await page.goto(base+'/transaksi/baru');
  await page.getByLabel('Jumlah (Rp)',{exact:true}).fill('12345.67');
  await page.getByLabel('Tanggal',{exact:true}).fill('2024-02-29');
@@ -39,8 +41,10 @@ try {
  await page.getByRole('button',{name:'Simpan',exact:true}).click(); await page.waitForURL(base+'/transaksi');
  assert.match(await page.textContent('main'),new RegExp(prefix));
  const tx=await db.transaction.findFirstOrThrow({where:{userId:user.id,note:prefix}}); assert.equal(tx.date.toISOString(),'2024-02-29T00:00:00.000Z');
+ stage='transaction edit';
  await page.goto(`${base}/transaksi/${tx.id}`); await page.getByLabel('Jumlah (Rp)',{exact:true}).fill('999'); await page.getByRole('button',{name:'Simpan',exact:true}).click(); await page.waitForURL(base+'/transaksi');
  assert.equal(String((await db.transaction.findUniqueOrThrow({where:{id:tx.id}})).amount),'999');
+ stage='settings category';
  await page.goto(base+'/pengaturan');
  const form=page.locator('form').filter({has:page.getByRole('button',{name:'Tambah kategori',exact:true})});
  await form.getByLabel('Nama kategori',{exact:true}).fill(prefix); await form.getByRole('button',{name:'Tambah kategori',exact:true}).click();
